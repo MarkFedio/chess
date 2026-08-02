@@ -1,0 +1,31 @@
+# Start
+running moves.txt took 11.602
+running moves.txt took 11.4849
+running moves.txt took 11.6113
+running moves.txt took 12.0263
+
+# only re-drawing sides when there was a piece captured on the last move
+running moves.txt took 11.55
+running moves.txt took 11.4569
+
+# Stopping new Board objects from loading images (only the very first Board created in Main
+# should do that)
+# Relevant snakeviz before/after:
+ncalls  tottime  percall    cumtime  percall       function
+66960	7.642	0.0001141	7.642	0.0001141	~:0(<built-in method pygame.image.load>)
+24	 0.0001056	4.4e-06	  0.0001056	 4.4e-06	~:0(<built-in method pygame.image.load>)
+running moves.txt took 5.73905
+running moves.txt took 5.72879
+
+# Adding "piece_images", "captured_piece_images", "legal_moves" to the 'excluded' set in Board's __deepcopy__()  
+# Relevant snakeviz before/after:
+ncalls          tottime  percall    cumtime  percall       function
+7878012/5922	2.269	0.0003832	6.434	0.001087	copy.py:110(deepcopy)
+7735773/5922	2.144	0.000362	5.956	0.001006	copy.py:110(deepcopy)
+running moves.txt took 5.73138
+
+# Adding the font as a member variable instead of loading it each time
+# Relevant snakeviz before/after:
+ncalls   tottime  percall    cumtime  percall       function
+22080	0.2316	1.049e-05	0.2316	1.049e-05	~:0(<method 'render' of 'pygame.font.Font' objects>)
+22080	0.0905	4.099e-06	0.0905	4.099e-06	~:0(<method 'render' of 'pygame.font.Font' objects>)
