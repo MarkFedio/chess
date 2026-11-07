@@ -17,10 +17,17 @@ BLACK = (0, 0, 0)
 GRAY = (128, 128, 128)
 LIGHT = (199, 178, 119)
 DARK = (101, 67, 33)
+
 HOVER_COLOR = (255, 255, 0, 200)
 SELECTED_COLOR = (255, 255, 0, 100)
 LEGAL_MOVE_COLOR = (128, 128, 128, 128)
+
 PROMOTION_BACKGROUND_COLOR = (29, 105, 34)
+
+WIN_KING_COLOR = (0, 255, 0, 128)
+LOSS_KING_COLOR = (255, 0, 0, 128)
+DRAW_KING_COLOR = (128, 128, 128, 200)
+
 
 INITIAL_STRING_LAYOUT = [["black_r", "black_n", "black_b", "black_q", "black_k", "black_b", "black_n", "black_r"],
                         ["black_p", "black_p", "black_p", "black_p", "black_p", "black_p", "black_p", "black_p"],
@@ -53,8 +60,8 @@ CHECKMATE_STRING_LAYOUT = [["black_k", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x",
                         ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
                         ["x_x", "white_q", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"], 
                         ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
-                        ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
                         ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "white_q"],
+                        ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
                         ["white_p", "white_p", "white_p", "white_p", "white_p", "white_p", "white_p", "white_p"],
                         ["white_r", "white_n", "white_b", "white_q", "white_k", "white_b", "white_n", "white_r"]]
 
@@ -76,6 +83,25 @@ INSUFFICIENT_MATERIAL_STRING_LAYOUT = [["x_x", "x_x", "x_x", "x_x", "black_k", "
                                         ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "black_p", "x_x"],
                                         ["x_x", "x_x", "x_x", "white_k", "x_x", "x_x", "x_x", "x_x"]]
 
+ENGINE_CAPTURE_TEST_STRING_LAYOUT = [["black_r", "x_x", "black_b", "black_q", "black_k", "black_b", "black_n", "black_r"],
+                        ["black_p", "black_p", "black_p", "black_p", "black_p", "black_p", "black_p", "black_p"],
+                        ["x_x", "x_x", "black_n", "x_x", "x_x", "x_x", "x_x", "x_x"], 
+                        ["x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
+                        ["x_x", "x_x", "x_x", "white_p", "x_x", "x_x", "x_x", "x_x"],
+                        ["white_p", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x", "x_x"],
+                        ["x_x", "white_p", "x_x", "white_p", "white_p", "white_p", "white_p", "white_p"],
+                        ["white_r", "white_n", "white_b", "white_q", "white_k", "white_b", "white_n", "white_r"]]
+
+DEBUG_STRING_LAYOUT = [[ "x_x","x_x","x_x" ,    "x_x"    , "x_x",     "x_x"  ,   "x_x" ,    "x_x"],
+ ["black_r"  , "x_x"  , "black_k", "black_b"   ,"x_x"   ,  "x_x"   ,  "x_x"  ,   "x_x"],
+  ["white_p"  , "x_x" ,    "x_x"  , "black_b" ,"black_q" ,  "x_x" ,  "black_r"  , "x_x"],
+  ["x_x"  , "black_p", "white_p", "black_p" ,"white_p", "black_p", "white_n" ,"black_p"],
+   ["white_q" ,"white_p" , "x_x"  ,  "x_x"  ,  "x_x"  ,  "x_x",   "white_p" ,"white_p"],
+   ["x_x"    ,"x_x" ,  "white_k" ,"white_b" , "x_x"   , "x_x"   , "x_x" ,  "white_r"],
+     ["white_r" ,"white_b" , "x_x"    ,"x_x"  , "black_n" , "x_x"   , "x_x"   ,"black_n"],
+    ["x_x"  ,  "x_x"   , "x_x"  ,  "x_x"   , "x_x"  ,  "x_x"  ,  "x_x"  ,  "x_x"]
+]
+
 
 WHITE_TURN = "white"
 BLACK_TURN = "black"
@@ -88,3 +114,8 @@ STALEMATE_ID = 2
 DRAW_50_MOVE_RULE_ID = 3
 DRAW_REPETITION_ID = 4
 DRAW_INSUFFICIENT_MATERIAL_ID = 5
+
+DEPTH = 3
+MAX_TRADE_DEPTH = 3
+POS_INF = 100000
+NEG_INF = -100000

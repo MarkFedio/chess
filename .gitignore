@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Profiler output
+*.prof
+
+# Text logs and move outputs
+*.txt

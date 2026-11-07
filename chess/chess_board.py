@@ -4,15 +4,22 @@ import math
 import copy
 
 from chess_piece import Piece
-import chess_engine
+import hashable_chess_board
+import chess_engine as chess_engine
 from constants import *
 
 class Board():
+    # Output move files (engine_file for use in this program's read_moves_file(), lan_file for external use)
+    engine_file = "engine_moves_output.txt"
+    lan_file = "lan_move_output.txt"
+
     def __init__(self, mode, engine=None):
         # stores how many points of material each player has. Initialized in init_pieces_array()
-        self.player_material = 0
-        self.opponent_material = 0
-        self.layout: list[list[Piece]] = self.init_pieces_array(INITIAL_STRING_LAYOUT)
+        self.white_material = 0
+        self.black_material = 0
+        self.player_layout_dict, self.opponent_layout_dict = self.init_pieces_array(INITIAL_STRING_LAYOUT)
+        self.player_layout_dict: dict[(int, int), Piece]
+        self.opponent_layout_dict: dict[(int, int), Piece]
 
         # internal stuff (idrk man)
         self.mode = mode # 0 (default) flips the screen after every move, 1 keeps orientation the same
@@ -59,21 +66,26 @@ class Board():
         self.captured_piece_images_height
 
         self.engine: chess_engine.Engine_Process = engine
+
         
     
     def init_pieces_array(self, string_layout):
         """takes in 2D array of a string representation of the board and 
-        returns a 2D array of the board with each square having a Piece object. Also
+        returns two dicts: one for each player with their pieces. Also
         initializes the two points of material variables """
-        layout = [[None for _ in range(8)] for _ in range(8)]
+        player_layout = {}
+        opponent_layout = {}
         for row in range(8):
             for col in range(8):
-                layout[row][col] = Piece(string_layout[row][col], row, col)
-                if layout[row][col].color == PLAYER_COLOR:
-                    self.player_material += layout[row][col].value
-                else:
-                    self.opponent_material += layout[row][col].value
-        return layout
+                curr_piece = Piece(string_layout[row][col], row, col)
+                if curr_piece.color == "white":
+                    player_layout[(row, col)] = curr_piece
+                    self.white_material += curr_piece.value
+                elif curr_piece.color == "black":
+                    opponent_layout[(row, col)] = curr_piece
+                    self.black_material += curr_piece.value
+
+        return player_layout, opponent_layout
     
     def init_piece_images(self):
         """Caches the piece images as surfaces into the self.piece_images dict"""
@@ -115,11 +127,17 @@ class Board():
     def draw_everything(self, screen):
         """calls the draw functions that happen every frame. Order matters."""
         self.draw_board(screen)
-        self.draw_hover(screen)
+        
         if self.game_state == 0:
+            self.draw_hover(screen)
+            self.draw_pieces(screen)
+            
+            self.draw_legal_moves(screen)
             self.draw_select(screen)
-        self.draw_pieces(screen)
-        self.draw_legal_moves(screen)
+        else:
+            self.draw_pieces(screen)
+            self.draw_game_end(screen)
+        
         if self.promotion_square != (-1, -1, ""):
             self.draw_promotion(screen)
         if self.moves_since_capture == 0:
@@ -138,40 +156,58 @@ class Board():
                 else:
                     color = DARK
                 pygame.draw.rect(screen, color, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-        
+                # For testing
+                lan_text = self.get_chess_notation((row, col), "white")
+                #lan_text = (f"{row, col}")
+                coord_text = self.font.render(lan_text, True, BLACK)
+                #coord_text = self.font.render((f"{row, col}"), True, BLACK)
+                screen.blit(coord_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
 
     def draw_pieces(self, screen):
         """draw just the pieces"""
-        
         if self.mode == 1 and self.turn == OPPOSING_COLOR:
-            for row in self.row_range:
-                for col in self.col_range:
-                    curr_piece = self.layout[7-row][7-col]
-                    if curr_piece.piece_type != "x":
-                        if self.piece_images[curr_piece.name] is None:
-                            piece_text = self.font.render(curr_piece.name, True, BLACK)
-                            screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
-                        else:
-                            screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
-                                                    row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
-                    # For testing
-                    coord_text = self.font.render((f"{row, col}"), True, BLACK)
-                    screen.blit(coord_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+            for pos in self.player_layout_dict.keys():
+                row = 7 - pos[0]
+                col = 7 - pos[1]
+                curr_piece = self.player_layout_dict[pos]
+                if self.piece_images[curr_piece.name] is None:
+                    piece_text = self.font.render(curr_piece.name, True, BLACK)
+                    screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+                else:
+                    screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
+                                            row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
+            for pos in self.opponent_layout_dict.keys():
+                row = 7 - pos[0]
+                col = 7 - pos[1]
+                curr_piece = self.opponent_layout_dict[pos]
+                if self.piece_images[curr_piece.name] is None:
+                    piece_text = self.font.render(curr_piece.name, True, BLACK)
+                    screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+                else:
+                    screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
+                                            row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
         # else, either default mode or 1 mode but player turn
         else:
-            for row in self.row_range:
-                for col in self.col_range:
-                    curr_piece = self.layout[row][col]
-                    if curr_piece.piece_type != "x":
-                        if self.piece_images[curr_piece.name] is None:
-                            piece_text = self.font.render(curr_piece.name, True, BLACK)
-                            screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
-                        else:
-                            screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
-                                                    row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
-                    # For testing
-                    coord_text = self.font.render((f"{row, col}"), True, BLACK)
-                    screen.blit(coord_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+            for pos in self.player_layout_dict.keys():
+                row = pos[0]
+                col = pos[1]
+                curr_piece = self.player_layout_dict[pos]
+                if self.piece_images[curr_piece.name] is None:
+                    piece_text = self.font.render(curr_piece.name, True, BLACK)
+                    screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+                else:
+                    screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
+                                            row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
+            for pos in self.opponent_layout_dict.keys():
+                row = pos[0]
+                col = pos[1]
+                curr_piece = self.opponent_layout_dict[pos]
+                if self.piece_images[curr_piece.name] is None:
+                    piece_text = self.font.render(curr_piece.name, True, BLACK)
+                    screen.blit(piece_text, ((col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE)))
+                else:
+                    screen.blit(self.piece_images[curr_piece.name], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
+                                            row*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
 
     def draw_hover(self, screen):
         """draw the hover effect"""
@@ -298,6 +334,60 @@ class Board():
                 pygame.draw.rect(screen, PROMOTION_BACKGROUND_COLOR, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, (7-row)*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
                 screen.blit(self.piece_images[promotion_piece_names[row]], ((col*SQUARE_SIZE + SIDE_BAR_WIDTH + (SQUARE_SIZE-self.piece_images_width)/2, 
                                                     (7-row)*SQUARE_SIZE + (SQUARE_SIZE-self.piece_images_height)/2)))
+
+    def draw_game_end(self, screen):
+        """Draws end of game visuals (squares with two kings get highlighted: green/red for respective winner/loser
+        upon checkmate, or both gray upon draw/stalemate)"""
+        # Get position of winning and losing king
+        # I think the losing king should always come from player dict, but this just checks both
+        for dict in [self.player_layout_dict, self.opponent_layout_dict]:
+            for pos, piece in dict.items():
+                if piece.piece_type == "k":
+                    if piece.color == self.turn:
+                        loss_king_pos = pos
+                    else:
+                        win_king_pos = pos
+        if self.game_state == CHECKMATE_ID:
+            self.draw_game_end_square_highlights(screen, win_king_pos, loss_king_pos, WIN_KING_COLOR, LOSS_KING_COLOR)
+        else:
+            # there isn't a win/loss king because it's a draw/stalemate, but those variables already
+            # have the positions we need.
+            self.draw_game_end_square_highlights(screen, win_king_pos, loss_king_pos, DRAW_KING_COLOR, DRAW_KING_COLOR)
+
+    def draw_game_end_square_highlights(self, screen, king_1, king_2, color_1, color_2):
+        """Helper function to draw_game_end(). Draws a highlight of color_1 over the square stored
+        in king_1, and color_2 over king_2."""
+        # just copied from draw_select
+        row, col = king_1
+        if self.mode == 0:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_1)
+            screen.blit(selected_surface, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE))
+        if self.mode == 1 and self.turn == OPPOSING_COLOR:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_1)
+            screen.blit(selected_surface, ((7-col)*SQUARE_SIZE + SIDE_BAR_WIDTH, (7-row)*SQUARE_SIZE))
+        if self.mode == 1 and self.turn == PLAYER_COLOR:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_1)
+            screen.blit(selected_surface, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE))
+
+        # same code as above. Ugly, but I don't want to make a loop for king_1/2 and color_1/2
+        row, col = king_2
+        if self.mode == 0:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_2)
+            screen.blit(selected_surface, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE))
+        if self.mode == 1 and self.turn == OPPOSING_COLOR:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_2)
+            screen.blit(selected_surface, ((7-col)*SQUARE_SIZE + SIDE_BAR_WIDTH, (7-row)*SQUARE_SIZE))
+        if self.mode == 1 and self.turn == PLAYER_COLOR:
+            selected_surface = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            selected_surface.fill(color_2)
+            screen.blit(selected_surface, (col*SQUARE_SIZE + SIDE_BAR_WIDTH, row*SQUARE_SIZE))
+
+        
     # ----------------------
     #    END VISUAL STUFF
     # ----------------------
@@ -308,27 +398,29 @@ class Board():
         """
         if self.game_state == 0:
             self.change_turn(turn_num)
-            self.layout = self.flip_board()
+            self.flip_layout_dicts()
             self.flip_en_passant_pieces()
-            self.selected_piece = (-1, -1)
-            self.legal_moves.clear()
-
+            # self.selected_piece = (-1, -1)
+            # self.legal_moves.clear()
             
             if not self.board_simulation:
+                
                 # engine stuff
                 # this if is needed for moves_file implementation as that's the only time the queue has more
                 # than 1 move in it at a time. Without this, the engine computes a move for the current board
                 # but adds it to the end of a sequence of moves from moves_file
-                # if self.engine.out_queue.empty() and not self.engine.moves_file_bool:
-                #     # use if True to do moves for both players
-                #     if self.turn == OPPOSING_COLOR:
-                #         import hashable_chess_board
-                #         self.engine.in_queue.put(hashable_chess_board.Hashable_Board(self))
+
+                if self.engine.out_queue.empty() and not self.engine.moves_file_bool:
+                    # use if True to do moves for both players
+                    if self.turn == OPPOSING_COLOR:
+                        self.engine.in_queue.put(hashable_chess_board.Hashable_Board(self))
 
                 self.count_pieces_dict = self.count_pieces()
                 self.game_state = self.check_draw_stalemate_checkmate()
                 if self.game_state != 0:
                     self.handle_end_of_game()
+                # import os
+                # os.system('cls')
     
     def change_turn(self, turn_num):
         """Helper function to swap turn instance variable (defaults to swapping, but turn can be specified)"""
@@ -341,21 +433,22 @@ class Board():
             self.turn = turn_num
 
     def handle_event(self, event, screen):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.handle_click(event, screen)
-        if event.type == ENGINE_MOVE:
-            out_queue_item = getattr(event, "move")
-            self.handle_engine_move(out_queue_item)
+        if self.game_state == 0:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                self.handle_click(event, screen)
+            if event.type == ENGINE_MOVE:
+                out_queue_item = getattr(event, "move")
+                self.handle_engine_move(out_queue_item)
     
     def handle_click(self, event, screen):
         """calls the functions that deal with a click TODO: among other things...""" 
+
         # left click
         if event.button == 1:
             
             mouse_row, mouse_col = self.get_square_from_screen_coords(event.pos)
             if mouse_col < 0 or mouse_col > 7:
                 return
-            
             # if the user clicked a promotion option or opponent clicked promotion in mode 0
             if (self.turn == PLAYER_COLOR or self.mode == 0) and mouse_col == self.promotion_square[1] and mouse_row <= 3:
                 self.complete_promotion(mouse_row)
@@ -373,33 +466,34 @@ class Board():
 
             # try new selection
             if self.selected_piece == (-1, -1):
-                if self.layout[mouse_row][mouse_col].color == self.turn:
+                if (mouse_row, mouse_col) in self.player_layout_dict:
                     self.selected_piece = (mouse_row, mouse_col)
                     # TODO: can maybe optimize to call pawn moves separately so that en_passant_pieces doesn't
                     #       need to be passed to other pieces' get_legal_moves() call. If you do this,
                     #       update it in chess_engine.py's get_legal_moves() too
-                    self.legal_moves = self.layout[mouse_row][mouse_col].get_legal_moves(self.layout, self.en_passant_pieces)
+                    self.legal_moves = self.player_layout_dict[(mouse_row, mouse_col)].get_legal_moves(self.player_layout_dict, self.opponent_layout_dict, self.en_passant_pieces)
                     self.legal_moves.extend(self.get_castle_moves())
-                    # if self.layout[mouse_row][mouse_col].piece_type == "k":
+                    # if layout_dict[(mouse_row, mouse_col)].piece_type == "k":
                     #     print(f"king legal moves before check check: {self.legal_moves}")
                     self.legal_moves = self.exclude_check_moves(self.legal_moves)
-
 
                     
             # otherwise, update selected piece: 
             else:
+                self.promotion_square = (-1, -1, "")
                 # clicked same piece so deselect
                 if self.selected_piece == (mouse_row, mouse_col):
                     self.selected_piece = (-1, -1)
-                    self.legal_moves = []
+                    self.legal_moves.clear()
                 # clicked same color piece, update selection
-                elif self.layout[mouse_row][mouse_col].color == self.turn:
+                elif (mouse_row, mouse_col) in self.player_layout_dict:
                     self.selected_piece = (mouse_row, mouse_col)
-                    self.legal_moves = self.layout[mouse_row][mouse_col].get_legal_moves(self.layout, self.en_passant_pieces)
+                    self.legal_moves = self.player_layout_dict[(mouse_row, mouse_col)].get_legal_moves(self.player_layout_dict, self.opponent_layout_dict, self.en_passant_pieces)
                     self.legal_moves.extend(self.get_castle_moves())
                     self.legal_moves = self.exclude_check_moves(self.legal_moves)
-
                     
+
+
                 # clicked open square or opposing piece, initiate move
                 else:
                     self.initiate_piece_move((mouse_row, mouse_col))
@@ -407,6 +501,11 @@ class Board():
     def handle_engine_move(self, move):
         """ translates the engine's returned move into Board's required format.
         move parameter is of form: (sq1 row, sq1 col), (sq2 row, sq2 col, move_type)"""
+        # the engine returns -1 if there's no valid move
+
+        if move == -1:
+            self.check_draw_stalemate_checkmate()
+            return
         sq2_row, sq2_col, move_type = move[1]
         if move_type == "p" or move_type == "pc":
             self.selected_piece = (move[0][0], move[0][1])
@@ -449,39 +548,40 @@ class Board():
         piece and then immediately calls move_piece() to finish the move. Resets self.promotion_square"""
         selected_row = self.selected_piece[0]
         selected_col = self.selected_piece[1]
+
         # queen promotion
         if mouse_row == 0:
             # put queen where the pawn is currently
-            self.layout[selected_row][selected_col] = Piece((self.turn + "_q"), selected_row, selected_col)
+            self.player_layout_dict[(selected_row, selected_col)] = Piece((self.turn + "_q"), selected_row, selected_col)
             # lose pawn (-1) to get queen (+9)
-            if self.turn == PLAYER_COLOR:
-                self.player_material += 8
+            if self.turn == "white":
+                self.white_material += 8
             else:
-                self.opponent_material += 8
+                self.black_material += 8
         # knight promotion
         if mouse_row == 1:
             # put knight where the pawn is currently
-            self.layout[selected_row][selected_col] = Piece((self.turn + "_n"), selected_row, selected_col)
-            if self.turn == PLAYER_COLOR:
-                self.player_material += 2
+            self.player_layout_dict[(selected_row, selected_col)] = Piece((self.turn + "_n"), selected_row, selected_col)
+            if self.turn == "white":
+                self.white_material += 2
             else:
-                self.opponent_material += 2
+                self.black_material += 2
         # rook promotion
         if mouse_row == 2:
             # put rook where the pawn is currently
-            self.layout[selected_row][selected_col] = Piece((self.turn + "_r"), selected_row, selected_col)
-            if self.turn == PLAYER_COLOR:
-                self.player_material += 4
+            self.player_layout_dict[(selected_row, selected_col)] = Piece((self.turn + "_r"), selected_row, selected_col)
+            if self.turn == "white":
+                self.white_material += 4
             else:
-                self.opponent_material += 4
+                self.black_material += 4
         # bishop promotion
         if mouse_row == 3:
             # put bishop where the pawn is currently
-            self.layout[selected_row][selected_col] = Piece((self.turn + "_b"), selected_row, selected_col)
-            if self.turn == PLAYER_COLOR:
-                self.player_material += 2
+            self.player_layout_dict[(selected_row, selected_col)] = Piece((self.turn + "_b"), selected_row, selected_col)
+            if self.turn == "white":
+                self.white_material += 2
             else:
-                self.opponent_material += 2
+                self.black_material += 2
         if self.promotion_square[2] == "p": 
             self.move_piece((self.selected_piece), (self.promotion_square[0], self.promotion_square[1]), "o")
         else: # pc (promotion capture)
@@ -493,50 +593,72 @@ class Board():
         """moves the piece on square1 to square2. Move validation must happen prior to this function.
         Handles en passant logic and castling logic. Calls update board."""
 
+
         sq1_row, sq1_col = sq1
         sq2_row, sq2_col = sq2
+
+        # Move files output
         if not self.board_simulation:
-            print(f"(({sq1_row}, {sq1_col}), ({sq2_row}, {sq2_col}, '{move_type}'))")
+            if self.turn == "black" and self.mode == 1:
+                print(f"(({7-sq1_row}, {7-sq1_col}), ({7-sq2_row}, {7-sq2_col}, '{move_type}'))")
+            else:
+                print(f"(({sq1_row}, {sq1_col}), ({sq2_row}, {sq2_col}, '{move_type}'))")
+            sq1_lan = self.get_chess_notation(sq1, self.turn)
+            sq2_lan = self.get_chess_notation(sq2, self.turn)
+            lan = sq1_lan + sq2_lan
+            if move_type == "p" or move_type == "pc":
+                lan += self.player_layout_dict[(sq1_row, sq1_col)].piece_type
+            lan += " "
+
+            with open(Board.engine_file, "a", encoding="utf-8") as file:
+                file.write(f"(({sq1_row}, {sq1_col}), ({sq2_row}, {sq2_col}, '{move_type}'))\n")
+            with open(Board.lan_file, "a", encoding="utf-8") as file:
+                file.write(lan)
+
         # if capture, add the captured piece to the captured_pieces list
-        if move_type == "c" or move_type == "pc": 
-            if self.turn == PLAYER_COLOR:
-                self.opponent_material -= self.layout[sq2_row][sq2_col].value
+        if move_type == "c" or move_type == "pc":
+            # this should work even though it looks wrong, because opp_layout_dict is always going to
+            # be the opposite color of whatever is on the other side of the -= 
+            if self.turn == "white":
+                self.black_material -= self.opponent_layout_dict[(sq2_row, sq2_col)].value
             else:
-                self.player_material -= self.layout[sq2_row][sq2_col].value
+                self.white_material -= self.opponent_layout_dict[(sq2_row, sq2_col)].value
 
-            self.captured_pieces.append(self.layout[sq2_row][sq2_col].name)
+            self.captured_pieces.append(self.opponent_layout_dict[(sq2_row, sq2_col)].name)
         if move_type == "e":
-            if self.turn == PLAYER_COLOR:
-                self.opponent_material -= self.layout[sq2_row][sq2_col].value
+            if self.turn == "white":
+                self.black_material -= self.opponent_layout_dict[(sq2_row + 1, sq2_col)].value
             else:
-                self.player_material -= self.layout[sq2_row][sq2_col].value
+                self.white_material -= self.opponent_layout_dict[(sq2_row + 1, sq2_col)].value
 
-            self.captured_pieces.append(self.layout[sq2_row + 1][sq2_col].name)
+            self.captured_pieces.append(self.opponent_layout_dict[(sq2_row + 1, sq2_col)].name)
             
-        # en passant logic
-        # check if piece is a color
-        #   if it's a pawn and moved two rows (can only happen on first move), that
-        #   pawn is eligible to be captured by en passant. Else, reset en passant for this color
-        if (self.layout[sq1_row][sq1_col].color == "white"):
-            if (self.layout[sq1_row][sq1_col].piece_type == "p" and sq1_row - sq2_row == 2):
-                self.en_passant_pieces["white"] = (sq2_row, sq2_col)
-            else:
-                self.en_passant_pieces["white"] = (-1, -1)
-        if (self.layout[sq1_row][sq1_col].color == "black"):
-            if (self.layout[sq1_row][sq1_col].piece_type == "p" and sq1_row - sq2_row == 2):
-                self.en_passant_pieces["black"] = (sq2_row, sq2_col)
-            else:
-                self.en_passant_pieces["black"] = (-1, -1)                     
+        
+        # get the piece that's moving
+        if (sq1_row, sq1_col) in self.player_layout_dict:
+            curr_piece = self.player_layout_dict[(sq1_row, sq1_col)]
+        else:
+            print(f"catastrophic failure in move_piece")
 
-        self.layout[sq2_row][sq2_col] = self.layout[sq1_row][sq1_col]
-        # the piece that was initially in sq1...
-        self.layout[sq2_row][sq2_col].row = sq2_row
-        self.layout[sq2_row][sq2_col].col = sq2_col
-        self.layout[sq2_row][sq2_col].num_moves += 1
+        # en passant logic
+        #  if it's a pawn and moved two rows (can only happen on first move), that
+        #  pawn is eligible to be captured by en passant. Else, reset en passant for this color
+        if curr_piece.piece_type == "p" and sq1_row - sq2_row == 2:
+            self.en_passant_pieces[curr_piece.color] = (sq2_row, sq2_col)
+        else:
+            self.en_passant_pieces[curr_piece.color] = (-1, -1)
+
+        # move piece on square 1 to square 2
+        self.player_layout_dict[(sq2_row, sq2_col)] = curr_piece
+        curr_piece.row = sq2_row
+        curr_piece.col = sq2_col
+        curr_piece.num_moves += 1
+        if move_type == "c" or move_type == "pc":
+            self.opponent_layout_dict.pop((sq2_row, sq2_col))
 
         # capturing with en passant removes the piece below (row + 1) where the pawn ends up
         if move_type == "e":
-            self.layout[sq2_row + 1][sq2_col] = Piece("x_x", sq2_row + 1, sq2_col)
+            self.opponent_layout_dict.pop((sq2_row + 1, sq2_col))
 
         # castling logic
         # white turn
@@ -545,41 +667,78 @@ class Board():
         if move_type == "y" and self.turn == PLAYER_COLOR:
             # king-side
             if sq2 == (7,6):    
-                self.layout[7][5] = self.layout[7][7]
-                self.layout[7][7] = Piece("x_x", sq1_row, sq1_col)
-                self.layout[7][5].row = 7
-                self.layout[7][5].col = 5
-                self.layout[7][5].num_moves += 1 # not technically a rook move but idt this matters
+
+                self.player_layout_dict[(7, 5)] = self.player_layout_dict.pop((7, 7))
+                self.player_layout_dict[(7, 5)].row = 7
+                self.player_layout_dict[(7, 5)].col = 5
+                self.player_layout_dict[(7, 5)].num_moves += 1 # not technically a rook move but idt this matters
             if sq2 == (7,2):
-                self.layout[7][3] = self.layout[7][0]
-                self.layout[7][0] = Piece("x_x", sq1_row, sq1_col)
-                self.layout[7][3].row = 7
-                self.layout[7][3].col = 3
-                self.layout[7][3].num_moves += 1
+                self.player_layout_dict[(7, 3)] = self.player_layout_dict.pop((7, 0))
+                self.player_layout_dict[(7, 3)].row = 7
+                self.player_layout_dict[(7, 3)].col = 3
+                self.player_layout_dict[(7, 3)].num_moves += 1
+
         # mirrored logic for black
         if move_type == "y" and self.turn == OPPOSING_COLOR:
             if sq2 == (7,1):    
-                self.layout[7][2] = self.layout[7][0]
-                self.layout[7][0] = Piece("x_x", sq1_row, sq1_col)
-                self.layout[7][2].row = 7
-                self.layout[7][2].col = 2
-                self.layout[7][2].num_moves += 1 # not technically a rook move but idt this matters
+                self.player_layout_dict[(7, 2)] = self.player_layout_dict.pop((7, 0))
+                self.player_layout_dict[(7, 2)].row = 7
+                self.player_layout_dict[(7, 2)].col = 2
+                self.player_layout_dict[(7, 2)].num_moves += 1
+
             if sq2 == (7,5):
-                self.layout[7][4] = self.layout[7][7]
-                self.layout[7][7] = Piece("x_x", sq1_row, sq1_col)
-                self.layout[7][4].row = 7
-                self.layout[7][4].col = 4
-                self.layout[7][4].num_moves += 1
+                self.player_layout_dict[(7, 4)] = self.player_layout_dict.pop((7, 7))
+                self.player_layout_dict[(7, 4)].row = 7
+                self.player_layout_dict[(7, 4)].col = 4
+                self.player_layout_dict[(7, 4)].num_moves += 1
 
-        # ... and sq1 always becomes empty
-        self.layout[sq1_row][sq1_col] = Piece("x_x", sq1_row, sq1_col)
+        # sq1 becomes empty as long as sq1 and sq2 aren't the same... the only time they are the
+        # same (I think) is when the king "moves" in place to see if it's currently in check 
+        if (sq1_row, sq1_col) != (sq2_row, sq2_col):
+            self.player_layout_dict.pop((sq1_row, sq1_col))
 
-        # reads much better without distributing the not. Shoutout DeMorgan tho
-        if not (move_type == "c" or move_type == "e"):
-            self.moves_since_capture += 1
-        else:
-            self.moves_since_capture = 0
+        if not self.board_simulation:
+            # reads much better without distributing the not. Shoutout DeMorgan tho
+            if not (move_type == "c" or move_type == "e"):
+                self.moves_since_capture += 1
+            else:
+                self.moves_since_capture = 0
         self.update_board()
+
+        # if not self.board_simulation:
+        #     self.reverse_move(sq1, sq2, move_type)
+
+    def reverse_move(self, sq1, sq2, move_type):
+        """
+        Reverses the move in the parameters. To undo move_piece(x,y,z), you do
+        reverse_move(x,y,z). Updates board pieces as well as all required object attributes. Used
+        to avoid deepcopying boards during engine calculations and exclude_check_moves().
+        Currently only reverses "o" moves.
+        I think (0_0) the only thing that doesn't get reversed is the
+                self.selected_piece = (-1, -1)
+                self.legal_moves.clear()
+        in update_board(), but that shouldn't matter because you need to update those to move a piece again
+        """
+
+        sq1_row = 7 - sq1[0]
+        sq1_col = 7 - sq1[1]
+        sq2_row = 7 - sq2[0]
+        sq2_col = 7 - sq2[1]
+        if move_type == "o":
+            # use opponent dict because the turn changed since the move_piece() call
+            #print(f"moving piece {self.opponent_layout_dict[(sq2_row, sq2_col)].name} at {sq2_row}, {sq2_col} back to {sq1_row}, {sq1_col}")
+            self.opponent_layout_dict[(sq1_row, sq1_col)] = self.opponent_layout_dict[(sq2_row, sq2_col)]
+            self.opponent_layout_dict[(sq1_row, sq1_col)].row = sq1_row
+            self.opponent_layout_dict[(sq1_row, sq1_col)].col = sq1_col
+            self.opponent_layout_dict[(sq1_row, sq1_col)].num_moves -= 1
+
+            if (sq1_row, sq1_col) != (sq2_row, sq2_col):
+                self.opponent_layout_dict.pop((sq2_row, sq2_col))
+
+        self.change_turn(-1)
+        self.flip_layout_dicts()
+        self.flip_en_passant_pieces()
+
 
     # ----------------------
     #     BOARD STUFF (as opposed to the not board stuff in the Board class...)
@@ -590,17 +749,35 @@ class Board():
             0-based, so the board is 0-7 x 0-7"""
         return (math.floor(coords[1] / SQUARE_SIZE ), math.floor((coords[0] - SIDE_BAR_WIDTH) / SQUARE_SIZE))
     
-    def flip_board(self):
-        """returns a layout to reflect a 180 degree rotation of the board for when
+    def flip_layout_dicts(self):
+        """updates layout dicts to reflect a 180 degree rotation of the board for when
         the player turn changes"""
-        new_board = copy.deepcopy(self.layout)
-        for row in self.row_range:
-            for col in self.row_range:
-                new_board[row][col] = self.layout[7-row][7-col]
-                # update Piece coordinate
-                new_board[row][col].row = row
-                new_board[row][col].col = col
-        return new_board
+        
+        new_player_layout_dict = {}
+        new_opponent_layout_dict = {}
+
+        for pos in self.player_layout_dict.keys():
+            row = 7 - pos[0]
+            col = 7 - pos[1]
+            curr_piece = self.player_layout_dict[pos]
+            curr_piece.row = row
+            curr_piece.col = col
+            new_player_layout_dict[(row, col)] = curr_piece
+        self.player_layout_dict.clear()
+        self.player_layout_dict.update(new_player_layout_dict)
+
+        for pos in self.opponent_layout_dict.keys():
+            row = 7 - pos[0]
+            col = 7 - pos[1]
+            curr_piece = self.opponent_layout_dict[pos]
+            curr_piece.row = row
+            curr_piece.col = col
+            new_opponent_layout_dict[(row, col)] = curr_piece
+        self.opponent_layout_dict.clear()
+        self.opponent_layout_dict.update(new_opponent_layout_dict)
+
+        self.player_layout_dict, self.opponent_layout_dict = self.opponent_layout_dict, self.player_layout_dict
+
     
     def flip_en_passant_pieces(self):
         """returns a 180 degree rotated en passant dictionary"""
@@ -610,67 +787,172 @@ class Board():
         if self.en_passant_pieces["black"] != (-1, -1):
             new_en_passant_piece = (7 - self.en_passant_pieces["black"][0], 7 - self.en_passant_pieces["black"][1])
             self.en_passant_pieces["black"] = new_en_passant_piece
+
+    def get_chess_notation(self, sq1, turn):
+        """Converts a (int,int) coordinate into a (letter, int) format (Long Algebraic Notation).
+        Considers perspective so that the returned LAN is universal"""
+        # (row, col) = (file, rank)
         
+        num = -1
+        letter_str = ""
+        if turn == "white":
+            map = {1 : 'a', 2 : 'b', 3 : 'c', 4 : 'd', 5 : 'e', 6 : 'f', 7 : 'g', 8 : 'h'}
+            letter_str = map[sq1[1] + 1]
+            num = 8 - sq1[0]
+        else:
+            map = {8 : 'a', 7 : 'b', 6 : 'c', 5 : 'd', 4 : 'e', 3 : 'f', 2 : 'g', 1 : 'h'}
+            letter_str = map[sq1[1] + 1]
+            num = sq1[0] + 1
+
+        return letter_str + str(num)
+
+
+    # def exclude_check_moves(self, moves):
+    #     """takes in a list of currently valid moves but scans through them to see if any of them would
+    #     put this color's king in check and removes those moves."""
+
+    #     #print(f"exclude_check_moves moves: {moves}")
+    #     # could definitely store king_row/col as an instance variable and just update throughout for
+    #     # constant time access here, but that's the least of the problems given the hot
+    #     # mess of what follows this loop
+    #     for pos, piece in self.player_layout_dict.items():
+    #         if piece.piece_type == "k":
+    #             king_row = pos[0]
+    #             king_col = pos[1]
+    #     # loop through list of moves backwards so that they can be deleted if needed
+    #     for i in reversed(range(len(moves))):
+            
+    #         move = moves[i]
+            
+    #         # simulate board after this move
+    #         check_board = copy.deepcopy(self)            
+    #         check_board.board_simulation = True
+            
+    #         # print(f"\nc_b_l_d 1: {check_board_layout_dict}")
+    #         # print(f"\nc_b_o_l_d: {check_board_opp_layout_dict}")
+            
+    #         selected_piece = check_board.player_layout_dict[(check_board.selected_piece[0], check_board.selected_piece[1])]
+    #         #print(f"\n{selected_piece.name} on {selected_piece.row, selected_piece.col} doing {move}\n")
+    #         check_board.move_piece((selected_piece.row, selected_piece.col), (move[0], move[1]), move[2])
+    #         #print(f"\nc_b_l_d 2: {check_board_layout_dict}")
+
+    #         # update king pos if that move was a king move. move[0]/[1] have the user POV coords
+    #         # while selected.row/col have the simulated boards coords. The final if before the del
+    #         # accounts for the flip already with a 7 -, so use user POV coords here
+    #         if selected_piece.piece_type == "k":
+    #             king_row = move[0]
+    #             king_col = move[1]
+
+    #         # look at every piece in simulated board
+    #         # when moving black piece, piece is white perspective
+    #         for piece in check_board.player_layout_dict.values():
+                
+    #             legal_moves_set = piece.get_legal_moves_set(check_board.player_layout_dict, check_board.opponent_layout_dict,
+    #                                                             check_board.en_passant_pieces)
+    #             if ((7-king_row, 7-king_col, "c") in legal_moves_set or
+    #                 (7-king_row, 7-king_col, "e") in legal_moves_set or
+    #                 (7-king_row, 7-king_col, "pc") in legal_moves_set):
+    #                     del moves[i]
+    #                     break
+
+    #     return moves
 
     def exclude_check_moves(self, moves):
+        # print(f"\n\n")
+        # for pos, piece in self.player_layout_dict.items():
+        #     print(f"{piece.name} at {pos}")
         """takes in a list of currently valid moves but scans through them to see if any of them would
         put this color's king in check and removes those moves."""
-        for row in self.row_range:
-            for col in self.row_range:
-                if (self.layout[row][col].color == self.turn and
-                    self.layout[row][col].piece_type == "k"):
-                        king_row = row
-                        king_col = col
-        
+
+        #print(f"exclude_check_moves moves: {moves}")
+        # could definitely store king_row/col as an instance variable and just update throughout for
+        # constant time access here, but that's the least of the problems given the hot
+        # mess of what follows this loop
+        for pos, piece in self.player_layout_dict.items():
+            if piece.piece_type == "k":
+                king_row = pos[0]
+                king_col = pos[1]
+                break
+
+
+        selected_row = self.selected_piece[0]
+        selected_col = self.selected_piece[1]
+        #print(f"selected_row/col: {selected_row}, {selected_col}")
         # loop through list of moves backwards so that they can be deleted if needed
         for i in reversed(range(len(moves))):
-            # sometimes a move results in a check from multiple opposing pieces. Only remove that move once
-            removed_this_move = False
             move = moves[i]
-            # simulate board after this move
-        
-            check_board = copy.deepcopy(self)            
-            check_board.board_simulation = True
 
-            selected_piece = check_board.layout[check_board.selected_piece[0]][check_board.selected_piece[1]]
-            #print(f"\n{selected_piece.name} on {selected_piece.row, selected_piece.col} doing {move}\n")
-            check_board.move_piece((selected_piece.row, selected_piece.col), (move[0], move[1]), move[2])
+            # if it's an "o" move, use reverse_move() to undo. Otherwise, will need to copy it.
+            # Terrible modularity, and I know I could just have a variable point to either self or check_board,
+            # but I don't really care :P
+            if move[2] == "o":
+                self.board_simulation = True
+                
+                selected_piece = self.player_layout_dict[(selected_row, selected_col)]
+                self.move_piece((selected_row, selected_col), (move[0], move[1]), move[2])
+                if selected_piece.piece_type == "k":
+                    king_row = move[0]
+                    king_col = move[1]
 
-            # update king pos if that move was a king move. move[0]/[1] have the user POV coords
-            # while selected.row/col have the simulated boards coords. The final if before the del
-            # accounts for the flip already with a 7 -, so use user POV coords here
-            if selected_piece.piece_type == "k":
-                king_row = move[0]
-                king_col = move[1]
-
-            # look at every piece in simulated board
-            for row in self.row_range:
-                for col in self.row_range:
-                    piece = check_board.layout[row][col]
-                    # we just want pieces of opponent color (turn color of simulated board)
-                    if piece.color != check_board.turn:
-                        continue
-                    # get all legal moves for the curr piece and see if any of them can attack the king
-                    check_board.legal_moves = piece.get_legal_moves(check_board.layout, check_board.en_passant_pieces)
-                    for that_move in check_board.legal_moves:
-                        #print(f"{piece.name} on {7-piece.row, 7-piece.col} doing move {(7-that_move[0], 7-that_move[1])}")
-                        if ((7 - that_move[0], 7 - that_move[1]) == (king_row, king_col) and not removed_this_move):
-                            # print(f"removing check move {move} from {piece.name} on {7-piece.row, 7-piece.col}")
+                for piece in self.player_layout_dict.values():
+                    legal_moves_set = piece.get_legal_moves_set(self.player_layout_dict, self.opponent_layout_dict,
+                                                                self.en_passant_pieces)
+                    if ((7-king_row, 7-king_col, "c") in legal_moves_set or
+                        (7-king_row, 7-king_col, "e") in legal_moves_set or
+                        (7-king_row, 7-king_col, "pc") in legal_moves_set):
                             del moves[i]
-                            removed_this_move = True
+                            break
+                    
+                self.reverse_move((selected_row, selected_col), (move[0], move[1]), move[2])
+                self.board_simulation = False
+            else:  
+                # simulate board after this move
+                check_board = copy.deepcopy(self)            
+                check_board.board_simulation = True
+                
+                
+                selected_piece = check_board.player_layout_dict[(selected_row, selected_col)]
+                #print(f"\n{selected_piece.name} on {selected_piece.row, selected_piece.col} doing {move}\n")
+                check_board.move_piece((selected_piece.row, selected_piece.col), (move[0], move[1]), move[2])
 
+                # update king pos if that move was a king move. move[0]/[1] have the user POV coords
+                # while selected.row/col have the simulated boards coords. The final if before the del
+                # accounts for the flip already with a 7 -, so use user POV coords here
+                if selected_piece.piece_type == "k":
+                    king_row = move[0]
+                    king_col = move[1]
+
+                # look at every piece in simulated board
+                # when moving black piece, piece is white perspective
+                for piece in check_board.player_layout_dict.values():
+                    
+                    legal_moves_set = piece.get_legal_moves_set(check_board.player_layout_dict, check_board.opponent_layout_dict,
+                                                                    check_board.en_passant_pieces)
+                    if ((7-king_row, 7-king_col, "c") in legal_moves_set or
+                        (7-king_row, 7-king_col, "e") in legal_moves_set or
+                        (7-king_row, 7-king_col, "pc") in legal_moves_set):
+                            del moves[i]
+                            break
+
+        self.selected_piece = (selected_row, selected_col)
         return moves
 
+
     def get_castle_moves(self):
-        for row in self.row_range:
-            for col in self.row_range:
-                if (self.layout[row][col].color == self.turn and
-                    self.layout[row][col].piece_type == "k"):
-                        king_row = row
-                        king_col = col
-        # only continue if this piece is the king
+        if self.turn == WHITE_TURN:
+            king_row = 7
+            king_col = 4
+        else:
+            king_row = 7
+            king_col = 3
+
+
+        # only continue if the king is where it needs to be for castling
+        if (king_row, king_col) not in self.player_layout_dict or self.player_layout_dict[(king_row, king_col)].piece_type != "k":
+            return []
         if (self.selected_piece != (king_row, king_col)):
             return []
+        
 
         moves = []
         individual_castle = []
@@ -682,64 +964,73 @@ class Board():
         else:
             DIRECTION = -1
         # king side castling
-        if self.layout[king_row][king_col].num_moves == 0:
-            potential_rook = self.layout[7][king_col + (DIRECTION)*3]
-            if (self.layout[7][king_col + (DIRECTION)*1].color == "x" and self.layout[7][king_col + (DIRECTION)*2].color == "x" and
-                potential_rook.color == self.turn and potential_rook.piece_type == "r" and potential_rook.num_moves == 0):
-                
-                # first one leaves the king in place, but that's used to check if the king is currently in check
-                individual_castle.append((7, king_col, "o"))
-                individual_castle.append((7, king_col + (DIRECTION)*1, "o"))
-                individual_castle.append((7, king_col + (DIRECTION)*2, "o"))
-                individual_castle = self.exclude_check_moves(individual_castle)
-                # ie if no moves put the king in check
-                if len(individual_castle) == 3:
-                    individual_castle.clear()
-                    individual_castle.append((7, king_col + (DIRECTION)*2, "y"))
-                else:
-                    individual_castle.clear()
+        if self.player_layout_dict[(king_row, king_col)].num_moves == 0:
+            if (7, king_col + DIRECTION*3) in self.player_layout_dict:
+                potential_rook = self.player_layout_dict[(7, king_col + DIRECTION*3)]
+                if ((7, king_col + DIRECTION*1) not in self.player_layout_dict
+                    and (7, king_col + DIRECTION*2) not in self.player_layout_dict
+                    and potential_rook.color == self.turn
+                    and potential_rook.piece_type == "r"
+                    and potential_rook.num_moves == 0):
+                    # first one leaves the king in place, but that's used to check if the king is currently in check
+                    individual_castle.append((7, king_col, "o"))
+                    individual_castle.append((7, king_col + (DIRECTION)*1, "o"))
+                    individual_castle.append((7, king_col + (DIRECTION)*2, "o"))
+                    individual_castle = self.exclude_check_moves(individual_castle)
+                    # ie if no moves put the king in check
+                    if len(individual_castle) == 3:
+                        individual_castle.clear()
+                        individual_castle.append((7, king_col + (DIRECTION)*2, "y"))
+                    else:
+                        individual_castle.clear()
 
         moves.extend(individual_castle)
         individual_castle.clear()
 
         # queen side castling
-        if self.layout[king_row][king_col].num_moves == 0:
-            potential_rook = self.layout[7][king_col - (DIRECTION)*4]
-            if (self.layout[7][king_col - (DIRECTION)*1].color == "x" and self.layout[7][king_col - (DIRECTION)*2].color == "x" and self.layout[7][king_col - (DIRECTION)*3].color == "x" and
-                potential_rook.color == self.turn and potential_rook.piece_type == "r" and potential_rook.num_moves == 0):
-                
-                individual_castle.append((7, king_col, "o"))
-                individual_castle.append((7, king_col - (DIRECTION)*1, "o"))
-                individual_castle.append((7, king_col - (DIRECTION)*2, "o"))
-                individual_castle = self.exclude_check_moves(individual_castle)
-                # ie if no moves put the king in check
-                if len(individual_castle) == 3:
-                    individual_castle.clear()
-                    individual_castle.append((7, king_col - (DIRECTION)*2, "y"))
-                else:
-                    individual_castle.clear()
+        if self.player_layout_dict[(king_row, king_col)].num_moves == 0:
+            if (7, king_col - DIRECTION*4) in self.player_layout_dict:
+                potential_rook = self.player_layout_dict[(7, king_col - DIRECTION*4)]
+                if ((7, king_col - DIRECTION*1) not in self.player_layout_dict
+                    and (7, king_col - DIRECTION*2) not in self.player_layout_dict
+                    and (7, king_col - DIRECTION*3) not in self.player_layout_dict
+                    and potential_rook.color == self.turn
+                    and potential_rook.piece_type == "r"
+                    and potential_rook.num_moves == 0):
+
+                    individual_castle.append((7, king_col, "o"))
+                    individual_castle.append((7, king_col - (DIRECTION)*1, "o"))
+                    individual_castle.append((7, king_col - (DIRECTION)*2, "o"))
+                    individual_castle = self.exclude_check_moves(individual_castle)
+                    # ie if no moves put the king in check
+                    if len(individual_castle) == 3:
+                        individual_castle.clear()
+                        individual_castle.append((7, king_col - (DIRECTION)*2, "y"))
+                    else:
+                        individual_castle.clear()
 
         moves.extend(individual_castle)
         individual_castle.clear()
         return moves
     
     def check_draw_stalemate_checkmate(self):
+
         """Checks if there is a stalemate or checkmate on the board."""
         if self.moves_since_capture >= 100:
             return DRAW_50_MOVE_RULE_ID
         
         # 3 move repitition or whatever tf it is
-        import hashable_chess_board
+        
         hash_board = hashable_chess_board.Hashable_Board(self)
         hashed_board = hash(hash_board)
         if hashed_board in self.board_repetition_dict:
             self.board_repetition_dict[hashed_board] += 1
-            # print(f"{hashed_board}  :  {self.board_repetition_dict[hashed_board]}")
+            #print(f"{hashed_board}  :  {self.board_repetition_dict[hashed_board]}")
             if self.board_repetition_dict[hashed_board] == 3:
                 return DRAW_REPETITION_ID
         else:
             self.board_repetition_dict[hashed_board] = 1
-            # print(f"{hashed_board}  :  {self.board_repetition_dict[hashed_board]}")
+            #print(f"{hashed_board}  :  {self.board_repetition_dict[hashed_board]}")
         
         # Insufficient material logic
         white_pieces, black_pieces = self.count_pieces_dict
@@ -765,7 +1056,7 @@ class Board():
             if "n" in black_pieces:
                 if white_pieces["k"] == 1 and white_len == 1 and black_pieces["k"] == 1 and black_pieces["n"] == 1 and black_len == 2:
                     return DRAW_INSUFFICIENT_MATERIAL_ID 
-            
+
             # king and bishop vs king and bishop (if both bishops are on same color squares (bruh))
             if "b" in white_pieces and "b" in black_pieces:
                 if (white_pieces["k"] == 1 and white_pieces["b"] == 1 and white_len == 2 and 
@@ -773,14 +1064,16 @@ class Board():
                     # square colors...
                     first_color = -1
                     second_color = -1
-                    for row in range(8):
-                        for col in range(8):
-                            if self.layout[row][col].piece_type == "b":
-                                if first_color == -1:
-                                    first_color = (row + col) % 2
-                                else:
-                                    second_color = (row + col) % 2
-                                    break # only breaks out of inner loop, but better than nothing
+
+                    for pos, piece in self.player_layout_dict.items():
+                        if piece.piece_type == "b":
+                            first_color = (pos[0] + pos[1]) % 2
+                            break
+                    for pos, piece in self.opponent_layout_dict.items():
+                        if piece.piece_type == "b":
+                            second_color = (pos[0] + pos[1]) % 2
+                            break
+
                     if first_color == second_color:
                         return DRAW_INSUFFICIENT_MATERIAL_ID
 
@@ -791,24 +1084,23 @@ class Board():
         found_valid_move = False
         king_row = -1
         king_col = -1
-        for row in self.row_range:
-            for col in self.row_range:
-                if (self.layout[row][col].color == self.turn):
-                    self.selected_piece = (row, col)
-                    curr_piece_possible_moves.extend((self.layout[row][col].get_legal_moves(self.layout, self.en_passant_pieces)))
-                    if (self.layout[row][col].piece_type == "k"):
-                        # store king pos for later
-                        king_row = row
-                        king_col = col
-                        curr_piece_possible_moves.extend(self.get_castle_moves())
-                    curr_piece_possible_moves = self.exclude_check_moves(curr_piece_possible_moves)
-                    if len(curr_piece_possible_moves) > 0:
-                        found_valid_move = True
-                        break
-                    curr_piece_possible_moves.clear()
-            if found_valid_move:
-                break
-        
+
+        # makes copy of keys because reverse_move() in exclude_check_moves() re-inserts pieces
+        for pos in list(self.player_layout_dict.keys()):
+            piece = self.player_layout_dict[pos]
+            self.selected_piece = (pos)
+            curr_piece_possible_moves.extend(piece.get_legal_moves(self.player_layout_dict, self.opponent_layout_dict, self.en_passant_pieces))
+            if piece.piece_type == "k":
+                # store king pos for later
+                king_row = pos[0]
+                king_col = pos[1]
+                curr_piece_possible_moves.extend(self.get_castle_moves())
+            curr_piece_possible_moves = self.exclude_check_moves(curr_piece_possible_moves)
+            if len(curr_piece_possible_moves) > 0:
+                found_valid_move = True
+                #break
+            curr_piece_possible_moves.clear()
+
         self.selected_piece = (-1, -1)
         if found_valid_move:
             return VALID_MOVE_EXISTS_ID
@@ -832,21 +1124,29 @@ class Board():
         where the first dict is white and the second dict is black"""
         white_dict = {}
         black_dict = {}
-        for row in range(8):
-            for col in range(8):
-                curr_piece = self.layout[row][col]
-                if curr_piece.color == "x":
-                    continue
-                if curr_piece.color == "white":
-                    if curr_piece.piece_type in white_dict:
-                        white_dict[curr_piece.piece_type] += 1
-                    else:
-                        white_dict[curr_piece.piece_type] = 1
-                else: # must be black (or catastrophic failure)
-                    if curr_piece.piece_type in black_dict:
-                        black_dict[curr_piece.piece_type] += 1
-                    else:
-                        black_dict[curr_piece.piece_type] = 1
+
+        for piece in self.player_layout_dict.values():
+            if piece.color == "white":
+                if piece.piece_type in white_dict:
+                    white_dict[piece.piece_type] += 1
+                else:
+                    white_dict[piece.piece_type] = 1
+            else: # must be black (or catastrophic failure)
+                if piece.piece_type in black_dict:
+                    black_dict[piece.piece_type] += 1
+                else:
+                    black_dict[piece.piece_type] = 1
+        for piece in self.opponent_layout_dict.values():
+            if piece.color == "white":
+                if piece.piece_type in white_dict:
+                    white_dict[piece.piece_type] += 1
+                else:
+                    white_dict[piece.piece_type] = 1
+            else: # must be black (or catastrophic failure)
+                if piece.piece_type in black_dict:
+                    black_dict[piece.piece_type] += 1
+                else:
+                    black_dict[piece.piece_type] = 1
 
         return (white_dict, black_dict)
 
@@ -862,7 +1162,7 @@ class Board():
         elif self.game_state == 5:
             print(f"end of game due to draw by insufficient material")
         else:
-            print(f"catastropic failure")
+            print(f"catastrophic failure")
 
     def __deepcopy__(self, dict):
         if id(self) in dict:
@@ -872,7 +1172,8 @@ class Board():
         new_board = Board.__new__(Board)
         dict[id(self)] = new_board
 
-        # TODO: add other uneccesary fields
+        # TODO: add other uneccesary fields, and store these two sets as class level attributes
+        # so they don't get recursively stored...
         excluded = {"engine", "piece_images", "captured_piece_images", "legal_moves", "font"}
         # for ex: a Board copy's legal_moves field gets used, but it doesn't need the value
         # from the original Board, just for the field to exist.

@@ -48,24 +48,24 @@ class Piece:
 
     """
 
-    def get_legal_moves(self, layout, en_passant_dict):
+    def get_legal_moves(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
         """wrapper function to get the legal moves for any piece this function is called on"""
         moves = []
         if self.piece_type == "p":
-            moves = self.get_pawn_moves(layout, en_passant_dict)
+            moves = self.get_pawn_moves(player_layout_dict, opponent_layout_dict, en_passant_dict)
         elif self.piece_type == "n":
-            moves = self.get_knight_moves(layout)
+            moves = self.get_knight_moves(player_layout_dict, opponent_layout_dict)
         elif self.piece_type == "b":
-            moves = self.get_bishop_moves(layout)
+            moves = self.get_bishop_moves(player_layout_dict, opponent_layout_dict)
         elif self.piece_type == "r":
-            moves = self.get_rook_moves(layout)
+            moves = self.get_rook_moves(player_layout_dict, opponent_layout_dict)
         elif self.piece_type == "q":
-            moves = self.get_queen_moves(layout)
+            moves = self.get_queen_moves(player_layout_dict, opponent_layout_dict)
         elif self.piece_type == "k":
-            moves = self.get_king_moves(layout)
+            moves = self.get_king_moves(player_layout_dict, opponent_layout_dict)
         return moves
         
-    def get_pawn_moves(self, layout, en_passant_dict):
+    def get_pawn_moves(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
         """gets valid moves for the pawn Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
@@ -73,23 +73,24 @@ class Piece:
         row = self.row
         col = self.col
         moves = []
-
         # straight infront
         if (row-1 >= 0):
-            if layout[row-1][col].color == "x":
+            # if empty space
+            if (row-1,col) not in player_layout_dict and (row-1,col) not in opponent_layout_dict: 
                 if (row - 1) == 0:
                     moves.append((row-1, col, "p"))
                 else:
                     moves.append((row-1, col, "o"))
         
-        # two infront
-        if (row-2 >= 0):
-            if layout[row-2][col].color == "x" and self.num_moves == 0:
-                moves.append((row-2, col, "o"))
+                # two infront
+                if (row-2 >= 0):
+                    if ((row-2,col) not in player_layout_dict and (row-2,col) not in opponent_layout_dict
+                        and self.num_moves == 0):
+                        moves.append((row-2, col, "o"))
         
         # up and left capture
         if (row-1 >= 0 and col-1 >= 0):
-            if layout[row-1][col-1].color == self.opposing_color:
+            if (row-1,col-1) in opponent_layout_dict:
                 # if promotion too (ends on row 0)
                 if (row - 1) == 0:
                     moves.append((row-1, col-1, "pc"))
@@ -98,16 +99,16 @@ class Piece:
 
         # up and right capture
         if (row-1 >= 0 and col+1 <= 7):
-            if layout[row-1][col+1].color == self.opposing_color:
+            if (row-1,col+1) in opponent_layout_dict:
                 # if promotion too (ends on row 0)
                 if (row - 1) == 0:
                     moves.append((row-1, col+1, "pc"))
                 else:
                     moves.append((row-1, col+1, "c"))
-
-        return moves + self.get_en_passant_moves(layout, en_passant_dict)
+        #print(f"moves: {moves}")
+        return moves + self.get_en_passant_moves(player_layout_dict, opponent_layout_dict, en_passant_dict)
     
-    def get_en_passant_moves(self, layout, en_passant_dict):
+    def get_en_passant_moves(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
         """gets valid en passant moves for the pawn Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
@@ -115,24 +116,23 @@ class Piece:
         if self.row == 3:
             # print(f"1: {self.name} to {self.row, self.col + 1} {self.row, self.col + 1}")
             # print(f"2: {self.name} to {self.row, self.col + 1} {self.row, self.col - 1}")
-    
-            if ((self.col - 1 >= 0) and # bound-check using short circuit evaluation
-                (layout[self.row][self.col - 1].piece_type == "p") and 
-                (layout[self.row][self.col - 1].color == self.opposing_color) and
-                (layout[self.row][self.col - 1].num_moves == 1) and
-                # if the current piece is adjacent to the opposite color's potential en passant piece
-                ((self.row, self.col - 1) == (en_passant_dict[layout[self.row][self.col - 1].color]))):
-                moves.append((self.row - 1, self.col - 1, "e"))
-            if ((self.col + 1 <= 7) and 
-                (layout[self.row][self.col + 1].piece_type == "p") and 
-                (layout[self.row][self.col + 1].color == self.opposing_color) and
-                (layout[self.row][self.col + 1].num_moves == 1) and
-                ((self.row, self.col + 1) == (en_passant_dict[layout[self.row][self.col + 1].color]))):
-                moves.append((self.row - 1, self.col + 1, "e"))
+            if self.col-1 >= 0:
+                if (self.row, self.col-1) in opponent_layout_dict:
+                    opp_piece = opponent_layout_dict[(self.row, self.col-1)]
+                    if (opp_piece.piece_type == "p" and opp_piece.num_moves == 1
+                        and ((self.row,self.col-1) == en_passant_dict[opp_piece.color])):
+                        moves.append((self.row - 1, self.col - 1, "e"))
+
+            if self.col+1 <= 7:
+                if (self.row, self.col+1) in opponent_layout_dict:
+                    opp_piece = opponent_layout_dict[(self.row, self.col+1)]
+                    if (opp_piece.piece_type == "p" and opp_piece.num_moves == 1
+                        and ((self.row,self.col+1) == en_passant_dict[opp_piece.color])):
+                        moves.append((self.row - 1, self.col + 1, "e"))
         #print(f"returning en passant moves: {moves}")
         return moves
 
-    def get_knight_moves(self, layout):
+    def get_knight_moves(self, player_layout_dict, opponent_layout_dict):
         """gets valid moves for the knight Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
@@ -148,13 +148,14 @@ class Piece:
                     continue
                 if (row + row_move < 0 or row + row_move > 7) or (col + col_move < 0 or col + col_move > 7):
                     continue
-                if layout[row + row_move][col + col_move].color == "x":
-                    moves.append((row + row_move, col + col_move, "o"))
-                if layout[row + row_move][col + col_move].color == self.opposing_color:
+                if ((row + row_move, col + col_move) not in player_layout_dict and 
+                    (row + row_move, col + col_move) not in opponent_layout_dict):
+                     moves.append((row + row_move, col + col_move, "o"))
+                if (row + row_move, col + col_move) in opponent_layout_dict:
                     moves.append((row + row_move, col + col_move, "c"))
         return moves
 
-    def get_bishop_moves(self, layout):
+    def get_bishop_moves(self, player_layout_dict, opponent_layout_dict):
         """gets valid moves for the bishop Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
@@ -166,12 +167,12 @@ class Piece:
         row_iter = self.row - 1
         col_iter = self.col - 1
         while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
-            if (layout[row_iter][col_iter].color == "x"):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "o"))
                 row_iter -= 1
                 col_iter -=1
                 continue
-            if (layout[row_iter][col_iter].color == self.opposing_color):
+            if (row_iter, col_iter) in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "c"))
                 break
             break
@@ -180,12 +181,12 @@ class Piece:
         row_iter = self.row - 1
         col_iter = self.col + 1
         while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
-            if (layout[row_iter][col_iter].color == "x"):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "o"))
                 row_iter -= 1
                 col_iter +=1
                 continue
-            if (layout[row_iter][col_iter].color == self.opposing_color):
+            if (row_iter, col_iter) in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "c"))
                 break
             break
@@ -194,12 +195,12 @@ class Piece:
         row_iter = self.row + 1
         col_iter = self.col - 1
         while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
-            if (layout[row_iter][col_iter].color == "x"):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "o"))
                 row_iter += 1
                 col_iter -=1
                 continue
-            if (layout[row_iter][col_iter].color == self.opposing_color):
+            if (row_iter, col_iter) in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "c"))
                 break
             break
@@ -208,18 +209,18 @@ class Piece:
         row_iter = self.row + 1
         col_iter = self.col + 1
         while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
-            if (layout[row_iter][col_iter].color == "x"):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "o"))
                 row_iter += 1
                 col_iter +=1
                 continue
-            if (layout[row_iter][col_iter].color == self.opposing_color):
+            if (row_iter, col_iter) in opponent_layout_dict:
                 moves.append((row_iter, col_iter, "c"))
                 break
             break
         return moves
     
-    def get_rook_moves(self, layout):
+    def get_rook_moves(self, player_layout_dict, opponent_layout_dict):
         """gets valid moves for the rook Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
@@ -231,11 +232,11 @@ class Piece:
         # up
         row_iter = self.row - 1
         while (row_iter >= 0 and row_iter <= 7):
-            if (layout[row_iter][self.col].color == "x"):
+            if (row_iter, self.col) not in player_layout_dict and (row_iter, self.col) not in opponent_layout_dict:
                 moves.append((row_iter, self.col, "o"))
                 row_iter -= 1
                 continue
-            if (layout[row_iter][self.col].color == self.opposing_color):
+            if (row_iter, self.col) in opponent_layout_dict:
                 moves.append((row_iter, self.col, "c"))
                 break
             break
@@ -243,11 +244,11 @@ class Piece:
         # down
         row_iter = self.row + 1
         while (row_iter >= 0 and row_iter <= 7):
-            if (layout[row_iter][self.col].color == "x"):
+            if (row_iter, self.col) not in player_layout_dict and (row_iter, self.col) not in opponent_layout_dict:
                 moves.append((row_iter, self.col, "o"))
                 row_iter += 1
                 continue
-            if (layout[row_iter][self.col].color == self.opposing_color):
+            if (row_iter, self.col) in opponent_layout_dict:
                 moves.append((row_iter, self.col, "c"))
                 break
             break
@@ -255,11 +256,11 @@ class Piece:
         # left
         col_iter = self.col - 1
         while (col_iter >= 0 and col_iter <= 7):
-            if (layout[self.row][col_iter].color == "x"):
+            if (self.row, col_iter) not in player_layout_dict and (self.row, col_iter) not in opponent_layout_dict:
                 moves.append((self.row, col_iter, "o"))
                 col_iter -= 1
                 continue
-            if (layout[self.row][col_iter].color == self.opposing_color):
+            if (self.row, col_iter) in opponent_layout_dict:
                 moves.append((self.row, col_iter, "c"))
                 break
             break
@@ -267,26 +268,27 @@ class Piece:
         # right
         col_iter = self.col + 1
         while (col_iter >= 0 and col_iter <= 7):
-            if (layout[self.row][col_iter].color == "x"):
+            if (self.row, col_iter) not in player_layout_dict and (self.row, col_iter) not in opponent_layout_dict:
                 moves.append((self.row, col_iter, "o"))
                 col_iter += 1
                 continue
-            if (layout[self.row][col_iter].color == self.opposing_color):
+            if (self.row, col_iter) in opponent_layout_dict:
                 moves.append((self.row, col_iter, "c"))
                 break
             break
 
         return moves
     
-    def get_queen_moves(self, layout):
+    def get_queen_moves(self, player_layout_dict, opponent_layout_dict):
         """gets valid moves for the queen Piece this was called on. Returns a list of 
         tuples in the form (col, row, z), where row/col is the square of the legal move 
         and z denotes a move type (see dict at top of move methods)"""
         
         # dazit
-        return self.get_bishop_moves(layout) + self.get_rook_moves(layout)
+        return (self.get_bishop_moves(player_layout_dict, opponent_layout_dict) 
+                + self.get_rook_moves(player_layout_dict, opponent_layout_dict))
     
-    def get_king_moves(self, layout):
+    def get_king_moves(self, player_layout_dict, opponent_layout_dict):
         """gets valid moves for the king Piece this was called on. Castling handled in
         chess_board.py Returns a list of tuples in the form (col, row, z), where row/col 
         is the square of the legal move and z denotes a move type (see dict at top of move methods)"""
@@ -301,12 +303,279 @@ class Piece:
                     continue
                 if (row + row_move < 0 or row + row_move > 7) or (col + col_move < 0 or col + col_move > 7):
                     continue
-                if layout[row + row_move][col + col_move].color == "x":
+                if ((row + row_move, col + col_move) not in player_layout_dict 
+                    and (row + row_move, col + col_move) not in opponent_layout_dict):
                     moves.append((row + row_move, col + col_move, "o"))
-                if layout[row + row_move][col + col_move].color == self.opposing_color:
-                    moves.append((row + row_move, col + col_move, "c"))
+                if (row + row_move, col + col_move) in opponent_layout_dict:
+                    moves.append((row + row_move, col + col_move, "c"))       
 
-
-                
         return moves
     
+
+    # ---------------------
+    #     SET METHODS
+    # ---------------------
+    # these functions are the same as above, just returning a set instead of a list (<0_0>)
+
+    def get_legal_moves_set(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
+        """wrapper function to get the legal moves in a set for any piece this function is called on"""
+        if self.piece_type == "p":
+            moves = self.get_pawn_moves_set(player_layout_dict, opponent_layout_dict, en_passant_dict)
+        elif self.piece_type == "n":
+            moves = self.get_knight_moves_set(player_layout_dict, opponent_layout_dict)
+        elif self.piece_type == "b":
+            moves = self.get_bishop_moves_set(player_layout_dict, opponent_layout_dict)
+        elif self.piece_type == "r":
+            moves = self.get_rook_moves_set(player_layout_dict, opponent_layout_dict)
+        elif self.piece_type == "q":
+            moves = self.get_queen_moves_set(player_layout_dict, opponent_layout_dict)
+        elif self.piece_type == "k":
+            moves = self.get_king_moves_set(player_layout_dict, opponent_layout_dict)
+        return moves
+
+    def get_pawn_moves_set(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
+        """gets valid moves for the pawn Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        
+        row = self.row
+        col = self.col
+        moves = set()
+        # straight infront
+        if (row-1 >= 0):
+            # if empty space
+            if (row-1,col) not in player_layout_dict and (row-1,col) not in opponent_layout_dict: 
+                if (row - 1) == 0:
+                    moves.add((row-1, col, "p"))
+                else:
+                    moves.add((row-1, col, "o"))
+        
+                # two infront
+                if (row-2 >= 0):
+                    if ((row-1,col) not in player_layout_dict and (row-1,col) not in opponent_layout_dict
+                        and self.num_moves == 0):
+                        moves.add((row-2, col, "o"))
+        
+        # up and left capture
+        if (row-1 >= 0 and col-1 >= 0):
+            if (row-1,col-1) in opponent_layout_dict:
+                # if promotion too (ends on row 0)
+                if (row - 1) == 0:
+                    moves.add((row-1, col-1, "pc"))
+                else:
+                    moves.add((row-1, col-1, "c"))
+
+        # up and right capture
+        if (row-1 >= 0 and col+1 <= 7):
+            if (row-1,col+1) in opponent_layout_dict:
+                # if promotion too (ends on row 0)
+                if (row - 1) == 0:
+                    moves.add((row-1, col+1, "pc"))
+                else:
+                    moves.add((row-1, col+1, "c"))
+        #print(f"moves: {moves}")
+        moves.update(self.get_en_passant_moves_set(player_layout_dict, opponent_layout_dict, en_passant_dict))
+        return moves
+    
+    def get_en_passant_moves_set(self, player_layout_dict, opponent_layout_dict, en_passant_dict):
+        """gets valid en passant moves for the pawn Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        moves = set()
+        if self.row == 3:
+            # print(f"1: {self.name} to {self.row, self.col + 1} {self.row, self.col + 1}")
+            # print(f"2: {self.name} to {self.row, self.col + 1} {self.row, self.col - 1}")
+            if self.col-1 >= 0:
+                if (self.row, self.col-1) in opponent_layout_dict:
+                    opp_piece = opponent_layout_dict[(self.row, self.col-1)]
+                    if (opp_piece.piece_type == "p" and opp_piece.num_moves == 1
+                        and ((self.row,self.col-1) == en_passant_dict[opp_piece.color])):
+                        moves.add((self.row - 1, self.col - 1, "e"))
+
+            if self.col+1 <= 7:
+                if (self.row, self.col+1) in opponent_layout_dict:
+                    opp_piece = opponent_layout_dict[(self.row, self.col+1)]
+                    if (opp_piece.piece_type == "p" and opp_piece.num_moves == 1
+                        and ((self.row,self.col+1) == en_passant_dict[opp_piece.color])):
+                        moves.add((self.row - 1, self.col + 1, "e"))
+        #print(f"returning en passant moves: {moves}")
+        return moves
+
+    def get_knight_moves_set(self, player_layout_dict, opponent_layout_dict):
+        """gets valid moves for the knight Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        
+        row = self.row
+        col = self.col
+        moves = set()
+
+        # why'd it work first try
+        for row_move in (-2, -1, 1, 2):
+            for col_move in (-2, -1, 1, 2):
+                if abs(row_move) + abs(col_move) != 3:
+                    continue
+                if (row + row_move < 0 or row + row_move > 7) or (col + col_move < 0 or col + col_move > 7):
+                    continue
+                if ((row + row_move, col + col_move) not in player_layout_dict and 
+                    (row + row_move, col + col_move) not in opponent_layout_dict):
+                        moves.add((row + row_move, col + col_move, "o"))
+                if (row + row_move, col + col_move) in opponent_layout_dict:
+                    moves.add((row + row_move, col + col_move, "c"))
+        return moves
+
+    def get_bishop_moves_set(self, player_layout_dict, opponent_layout_dict):
+        """gets valid moves for the bishop Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        
+        moves = set()
+        # why'd it work first try 2
+
+        # up-left
+        row_iter = self.row - 1
+        col_iter = self.col - 1
+        while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "o"))
+                row_iter -= 1
+                col_iter -=1
+                continue
+            if (row_iter, col_iter) in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "c"))
+                break
+            break
+
+        # up-right
+        row_iter = self.row - 1
+        col_iter = self.col + 1
+        while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "o"))
+                row_iter -= 1
+                col_iter +=1
+                continue
+            if (row_iter, col_iter) in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "c"))
+                break
+            break
+
+        # down-left
+        row_iter = self.row + 1
+        col_iter = self.col - 1
+        while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "o"))
+                row_iter += 1
+                col_iter -=1
+                continue
+            if (row_iter, col_iter) in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "c"))
+                break
+            break
+        
+        # down-right
+        row_iter = self.row + 1
+        col_iter = self.col + 1
+        while (row_iter >= 0 and row_iter <= 7) and (col_iter >= 0 and col_iter <= 7):
+            if (row_iter, col_iter) not in player_layout_dict and (row_iter, col_iter) not in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "o"))
+                row_iter += 1
+                col_iter +=1
+                continue
+            if (row_iter, col_iter) in opponent_layout_dict:
+                moves.add((row_iter, col_iter, "c"))
+                break
+            break
+        return moves
+
+    def get_rook_moves_set(self, player_layout_dict, opponent_layout_dict):
+        """gets valid moves for the rook Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        
+        moves = set()
+
+        # up
+        row_iter = self.row - 1
+        while (row_iter >= 0 and row_iter <= 7):
+            if (row_iter, self.col) not in player_layout_dict and (row_iter, self.col) not in opponent_layout_dict:
+                moves.add((row_iter, self.col, "o"))
+                row_iter -= 1
+                continue
+            if (row_iter, self.col) in opponent_layout_dict:
+                moves.add((row_iter, self.col, "c"))
+                break
+            break
+    
+        # down
+        row_iter = self.row + 1
+        while (row_iter >= 0 and row_iter <= 7):
+            if (row_iter, self.col) not in player_layout_dict and (row_iter, self.col) not in opponent_layout_dict:
+                moves.add((row_iter, self.col, "o"))
+                row_iter += 1
+                continue
+            if (row_iter, self.col) in opponent_layout_dict:
+                moves.add((row_iter, self.col, "c"))
+                break
+            break
+
+        # left
+        col_iter = self.col - 1
+        while (col_iter >= 0 and col_iter <= 7):
+            if (self.row, col_iter) not in player_layout_dict and (self.row, col_iter) not in opponent_layout_dict:
+                moves.add((self.row, col_iter, "o"))
+                col_iter -= 1
+                continue
+            if (self.row, col_iter) in opponent_layout_dict:
+                moves.add((self.row, col_iter, "c"))
+                break
+            break
+
+        # right
+        col_iter = self.col + 1
+        while (col_iter >= 0 and col_iter <= 7):
+            if (self.row, col_iter) not in player_layout_dict and (self.row, col_iter) not in opponent_layout_dict:
+                moves.add((self.row, col_iter, "o"))
+                col_iter += 1
+                continue
+            if (self.row, col_iter) in opponent_layout_dict:
+                moves.add((self.row, col_iter, "c"))
+                break
+            break
+
+        return moves
+
+    def get_queen_moves_set(self, player_layout_dict, opponent_layout_dict):
+        """gets valid moves for the queen Piece this was called on. Returns a set of 
+        tuples in the form (col, row, z), where row/col is the square of the legal move 
+        and z denotes a move type (see dict at top of move methods)"""
+        
+        bishop_moves = self.get_bishop_moves_set(player_layout_dict, opponent_layout_dict)
+        rook_moves = self.get_rook_moves_set(player_layout_dict, opponent_layout_dict)
+
+        bishop_moves.update(rook_moves)
+        return bishop_moves
+
+    def get_king_moves_set(self, player_layout_dict, opponent_layout_dict):
+        """gets valid moves for the king Piece this was called on. Castling handled in
+        chess_board.py Returns a set of tuples in the form (col, row, z), where row/col 
+        is the square of the legal move and z denotes a move type (see dict at top of move methods)"""
+
+        moves = set()
+        row = self.row
+        col = self.col
+
+        for row_move in (-1, 0, 1):
+            for col_move in (-1, 0, 1):
+                if (row_move == 0) and (col_move == 0):
+                    continue
+                if (row + row_move < 0 or row + row_move > 7) or (col + col_move < 0 or col + col_move > 7):
+                    continue
+                if ((row + row_move, col + col_move) not in player_layout_dict 
+                    and (row + row_move, col + col_move) not in opponent_layout_dict):
+                    moves.add((row + row_move, col + col_move, "o"))
+                if (row + row_move, col + col_move) in opponent_layout_dict:
+                    moves.add((row + row_move, col + col_move, "c"))       
+
+        return moves
